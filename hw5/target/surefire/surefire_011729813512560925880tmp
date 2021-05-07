@@ -1,0 +1,6 @@
+#surefire_0
+#Fri May 07 20:54:25 CST 2021
+basedir=/Users/lyonsupernova/Desktop/hw5
+user.dir=/Users/lyonsupernova/Desktop/hw5
+test.cases=cases/no_transaction/create
+localRepository=/Users/lyonsupernova/.m2/repository
