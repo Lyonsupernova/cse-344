@@ -1,0 +1,11 @@
+# public_test_case
+create user user 1000
+login user user
+book 1
+quit
+*
+Created user user
+Logged in as user
+No such itinerary 1
+Goodbye
+*
