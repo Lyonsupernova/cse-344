@@ -2,6 +2,7 @@ package flightapp;
 
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
+import javax.xml.transform.Result;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
@@ -108,8 +109,17 @@ public class Query extends QueryAbstract {
   private static final String INSERT_RESERVATION = "INSERT INTO Reservations VALUES (?,?,?,?,?)";
   private PreparedStatement insertReservationStatement;
 
-  private static final String SELECT_RESERVATION = "SELECT * FROM Reservations WHERE ReservationID = ?";
+  private static final String SELECT_RESERVATION = "SELECT * FROM Reservations WHERE ReservationID = ?" +
+          " AND IsCancelled = 0";
   private PreparedStatement selectReservationStatement;
+
+  private static final String SELECT_RESERVATION_WITH_USER_NAME = "SELECT * FROM Reservations WHERE UserName = ? " +
+          "AND IsCancelled = 0";
+  private PreparedStatement selectReservationWithUserNameStatement;
+
+  private static final String UPDATE_RESERVATION_CANCEL = "UPDATE Reservations SET IsCancelled = 1 " +
+          "WHERE reservationID = ?";
+  private PreparedStatement updateCancelReservationStatement;
 
   // user logged in status
   private static boolean isLogin;
@@ -167,6 +177,8 @@ public class Query extends QueryAbstract {
     selectReservationStatement = conn.prepareStatement(SELECT_RESERVATION);
     updateBalanceStatement = conn.prepareStatement(UPDATE_BALANCE);
     updateReservationStatement = conn.prepareStatement(UPDATE_RESERVATION);
+    selectReservationWithUserNameStatement = conn.prepareStatement(SELECT_RESERVATION_WITH_USER_NAME);
+    updateCancelReservationStatement = conn.prepareStatement(UPDATE_RESERVATION_CANCEL);
   }
 
   /**
@@ -329,15 +341,7 @@ public class Query extends QueryAbstract {
       }
       do {
         Flight flight = new Flight();
-        flight.fid = rs.getInt("fid");
-        flight.dayOfMonth = rs.getInt("day_of_month");
-        flight.carrierId = rs.getString("carrier_id");
-        flight.flightNum = rs.getString("flight_num");
-        flight.originCity = rs.getString("origin_city");
-        flight.destCity = rs.getString("dest_city");
-        flight.time = rs.getInt("actual_time");
-        flight.capacity = rs.getInt("capacity");
-        flight.price = rs.getInt("price");
+        setFlight(flight, rs, "");
         flightArr.add(new Itinerary(flight, null));
         directCount++;
       } while (rs.next());
@@ -351,25 +355,9 @@ public class Query extends QueryAbstract {
         ResultSet rss = indirectStatement.executeQuery();
         while (rss.next()) {
           Flight flight1 = new Flight();
-          flight1.fid = rss.getInt("f1_fid");
-          flight1.dayOfMonth = rss.getInt("f1_day_of_month");
-          flight1.carrierId = rss.getString("f1_carrier_id");
-          flight1.flightNum = rss.getString("f1_flight_num");
-          flight1.originCity = rss.getString("f1_origin_city");
-          flight1.destCity = rss.getString("f1_dest_city");
-          flight1.time = rss.getInt("f1_actual_time");
-          flight1.capacity = rss.getInt("f1_capacity");
-          flight1.price = rss.getInt("f1_price");
+          setFlight(flight1, rss, "f1_");
           Flight flight2 = new Flight();
-          flight2.fid = rss.getInt("f2_fid");
-          flight2.dayOfMonth = rss.getInt("f2_day_of_month");
-          flight2.carrierId = rss.getString("f2_carrier_id");
-          flight2.flightNum = rss.getString("f2_flight_num");
-          flight2.originCity = rss.getString("f2_origin_city");
-          flight2.destCity = rss.getString("f2_dest_city");
-          flight2.time = rss.getInt("f2_actual_time");
-          flight2.capacity = rss.getInt("f2_capacity");
-          flight2.price = rss.getInt("f2_price");
+          setFlight(flight2, rss, "f2_");
           flightArr.add(new Itinerary(flight1, flight2));
         }
         rss.close();
@@ -524,13 +512,12 @@ public class Query extends QueryAbstract {
    * [balance]\n" where [balance] is the remaining balance in the user's account.
    */
   public String transaction_pay(int reservationId) {
-    // TODO: YOUR CODE HERE
-
     if (!isLogin) {
       return "Cannot pay, not logged in\n";
     }
     // select the reservation with reservation ID
     try {
+      // "SELECT * FROM Reservations WHERE ReservationID = ?";
       selectReservationStatement.clearParameters();
       selectReservationStatement.setInt(1, reservationId);
       ResultSet rs = selectReservationStatement.executeQuery();
@@ -543,51 +530,64 @@ public class Query extends QueryAbstract {
       }
       // select the user balance
       int balance = getUserBalance();
-      int itineraryID = rs.getInt("ItineraryID");
-      searchItineraryStatement.clearParameters();
-      searchItineraryStatement.setInt(1, itineraryID);
-      rs = searchItineraryStatement.executeQuery();
-      rs.next();
-      int fid1 = rs.getInt("fid1");
-      int fid2 = rs.getInt("fid2");
-      searchFIDStatement.clearParameters();
-      searchFIDStatement.setInt(1, fid1);
-      rs = searchFIDStatement.executeQuery();
-      rs.next();
-      int price = rs.getInt("price");
-      if (fid2 != 0) {
-        searchFIDStatement.clearParameters();
-        searchFIDStatement.setInt(2, fid2);
-        rs = searchItineraryStatement.executeQuery();
-        rs.next();
-        price += rs.getInt("price");
-      }
+      int price = getTotalTicketPrice(rs);
       if (price > balance) {
-        return "User has only " + balance +" in account but itinerary costs " + price  + "\n";
+        return "User has only " + balance +" in account but itinerary costs " + price + "\n";
       }
-
       // update the balance
       // update the reservation table set isPaid = 1
       updateBalanceStatement.clearParameters();
       // "UPDATE Users SET Balance = ? WHERE UserName = ?";
-      updateBalanceStatement.setInt(1, balance - price);
-      updateBalanceStatement.setString(2, loginUserName);
-      updateBalanceStatement.executeUpdate();
-      updateReservationStatement.clearParameters();
-      updateReservationStatement.setInt(1, reservationId);
-      updateReservationStatement.executeQuery();
+      int remain = balance - price;
+      updateBalance(remain);
+      updateUnpaidReservationToPaid(reservationId);
       // "UPDATE Reservations SET IsPaid = 1 WHERE ReservationID = ?";
       rs.close();
       // reservation table get itinerary ID
       // select the flight's price
       // flight1 + flight2
-      return "Paid reservation: [reservationId] remaining balance: * [balance]\\n";
+      return "Paid reservation: " + reservationId + " remaining balance: " + remain + "\n";
     } catch (SQLException e) {
       e.printStackTrace();
     }
     return "Failed to pay for reservation " + reservationId + "\n";
   }
 
+  private int getTotalTicketPrice(ResultSet rs) throws SQLException {
+    int itineraryID = rs.getInt("ItineraryID");
+    searchItineraryStatement.clearParameters();
+    searchItineraryStatement.setInt(1, itineraryID);
+    ResultSet rss = searchItineraryStatement.executeQuery();
+    rss.next();
+    int fid1 = rss.getInt("fid1");
+    int fid2 = rss.getInt("fid2");
+    searchFIDStatement.clearParameters();
+    searchFIDStatement.setInt(1, fid1);
+    rss = searchFIDStatement.executeQuery();
+    rss.next();
+    int price = rss.getInt("price");
+    if (fid2 != 0) {
+      searchFIDStatement.clearParameters();
+      searchFIDStatement.setInt(2, fid2);
+      rss = searchItineraryStatement.executeQuery();
+      rss.next();
+      price += rss.getInt("price");
+    }
+    rss.close();
+    return price;
+  }
+  private void updateUnpaidReservationToPaid(int reservationId) throws SQLException {
+    updateReservationStatement.clearParameters();
+    updateReservationStatement.setInt(1, reservationId);
+    updateReservationStatement.executeQuery();
+  }
+
+  private void updateBalance(int remain) throws SQLException {
+    updateBalanceStatement.clearParameters();
+    updateBalanceStatement.setInt(1, remain);
+    updateBalanceStatement.setString(2, loginUserName);
+    updateBalanceStatement.executeUpdate();
+  }
 
   private int getUserBalance() throws SQLException {
     selectUserNameStatement.clearParameters();
@@ -614,8 +614,64 @@ public class Query extends QueryAbstract {
    * @see Flight#toString()
    */
   public String transaction_reservations() {
-    // TODO: YOUR CODE HERE
+    if (!isLogin) {
+      return "Cannot view reservations, not logged in\n";
+    }
+    // select all the reservations from the users
+    try {
+      selectReservationWithUserNameStatement.clearParameters();
+      selectReservationWithUserNameStatement.setString(1, loginUserName);
+      ResultSet rs = selectReservationWithUserNameStatement.executeQuery();
+      if (!rs.next()) {
+        return "No reservations found\n";
+      }
+      StringBuffer sb = new StringBuffer();
+      do {
+        int reservationID = rs.getInt("ReservationID");
+        boolean isPaid = rs.getInt("IsPaid") == 1? true : false;
+        // select flight information
+        sb.append("Reservation " + reservationID + " paid: " + isPaid + "\n");
+        int itineraryID = rs.getInt("ItineraryID");
+        searchItineraryStatement.clearParameters();
+        searchItineraryStatement.setInt(1, itineraryID);
+        rs = searchItineraryStatement.executeQuery();
+        rs.next();
+        int fid1 = rs.getInt("fid1");
+        Flight flight1 = getFlight(fid1);
+        sb.append(flight1 + "\n");
+        int fid2 = rs.getInt("fid2");
+        if (fid2 != 0) {
+          Flight flight2 = getFlight(fid2);
+          sb.append(flight2 + "\n");
+        }
+      } while (rs.next());
+      return sb.toString();
+    } catch (SQLException e) {
+      e.printStackTrace();
+    }
     return "Failed to retrieve reservations\n";
+  }
+
+  private Flight getFlight(int fid) throws SQLException {
+    searchFIDStatement.clearParameters();
+    searchFIDStatement.setInt(1, fid);
+    ResultSet rs = searchFIDStatement.executeQuery();
+    rs.next();
+    Flight flight = new Flight();
+    setFlight(flight, rs, "");
+    return flight;
+  }
+
+  private void setFlight(Flight flight, ResultSet rs, String prefix) throws SQLException {
+    flight.fid = rs.getInt(prefix + "fid");
+    flight.dayOfMonth = rs.getInt(prefix + "day_of_month");
+    flight.carrierId = rs.getString(prefix + "carrier_id");
+    flight.flightNum = rs.getString(prefix + "flight_num");
+    flight.originCity = rs.getString(prefix + "origin_city");
+    flight.destCity = rs.getString(prefix + "dest_city");
+    flight.time = rs.getInt(prefix + "actual_time");
+    flight.capacity = rs.getInt(prefix + "capacity");
+    flight.price = rs.getInt(prefix + "price");
   }
 
   /**
@@ -630,8 +686,46 @@ public class Query extends QueryAbstract {
    * Even though a reservation has been canceled, its ID should not be reused by the system.
    */
   public String transaction_cancel(int reservationId) {
-    // TODO: YOUR CODE HERE
+    if (!isLogin) {
+      return "Cannot cancel reservations, not logged in\n";
+    }
+    try {
+      selectReservationStatement.clearParameters();
+      selectReservationStatement.setInt(1, reservationId);
+      ResultSet rs = selectReservationStatement.executeQuery();
+      if (!rs.next()) {
+        return "Failed to cancel reservation " + reservationId + "\n";
+      }
+      // select isPaid
+      // check if the reservation is paid,
+      // yes, refund the money back to the user
+      int isPaid = rs.getInt("IsPaid");
+      if (isPaid == 1) {
+        // refund
+        // update user table added with itinerary total price
+        int refund = getTotalTicketPrice(rs);
+        selectUserNameStatement.clearParameters();
+        selectUserNameStatement.setString(1, loginUserName);
+        ResultSet rss = selectUserNameStatement.executeQuery();
+        rss.next();
+        int balance = rss.getInt("Balance");
+        // UPDATE Users SET Balance = ?
+        updateBalance(balance + refund);
+      }
+      // update the reservation table where reservationId = reservationId
+      // UPDATE Reservations SET IsCancelled = 1 WHERE reservationID = ?
+      updateCancelReservation(reservationId);
+      return "Canceled reservation " + reservationId + "\n";
+    } catch (SQLException e) {
+      e.printStackTrace();
+    }
     return "Failed to cancel reservation " + reservationId + "\n";
+  }
+
+  private void updateCancelReservation(int reservationId) throws SQLException {
+    updateCancelReservationStatement.clearParameters();
+    updateCancelReservationStatement.setInt(1, reservationId);
+    updateReservationStatement.executeUpdate();
   }
 
   /**

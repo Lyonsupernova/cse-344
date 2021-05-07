@@ -1,5 +1,5 @@
-/Users/lyonsupernova/Desktop/hw5/src/test/java/flightapp/wrapper/TestConnectionWrapper.java
-/Users/lyonsupernova/Desktop/hw5/src/test/java/flightapp/wrapper/exception/CSE344NotAllowAccessException.java
-/Users/lyonsupernova/Desktop/hw5/src/test/java/flightapp/FlightServiceTest.java
-/Users/lyonsupernova/Desktop/hw5/src/test/java/flightapp/wrapper/TestPreparedStatementWrapper.java
-/Users/lyonsupernova/Desktop/hw5/src/test/java/flightapp/TestUtils.java
+/Users/lyonsupernova/Desktop/cse-344/hw5/src/test/java/flightapp/wrapper/TestConnectionWrapper.java
+/Users/lyonsupernova/Desktop/cse-344/hw5/src/test/java/flightapp/wrapper/TestPreparedStatementWrapper.java
+/Users/lyonsupernova/Desktop/cse-344/hw5/src/test/java/flightapp/FlightServiceTest.java
+/Users/lyonsupernova/Desktop/cse-344/hw5/src/test/java/flightapp/wrapper/exception/CSE344NotAllowAccessException.java
+/Users/lyonsupernova/Desktop/cse-344/hw5/src/test/java/flightapp/TestUtils.java
